@@ -1,0 +1,33 @@
+[package]
+name = "hoodrich"
+version = "0.1.0"
+edition = "2024"
+description = "Render markdown and source code as styled ratatui Text, with concealed/raw modes, diffs and Dracula code highlighting"
+license = "MIT"
+repository = "https://github.com/kloki/hoodrich"
+readme = "README.md"
+keywords = ["markdown", "ratatui", "tui", "terminal", "syntax-highlighting"]
+categories = ["command-line-interface", "text-processing"]
+include = ["src/**", "examples/**", "tests/**", "README.md", "LICENSE-MIT", "Cargo.toml"]
+
+[dependencies]
+ratatui = { version = "0.30", default-features = false }
+pulldown-cmark = { version = "0.13", default-features = false }
+# default-features must stay off: when both regex backends are enabled syntect picks onig (C).
+syntect = { version = "5.3", default-features = false, features = ["default-syntaxes", "regex-fancy"] }
+similar = "3"
+unicode-width = "0.2"
+
+[dev-dependencies]
+ratatui = "0.30"
+crossterm = "0.29"
+
+# fancy-regex is extremely slow unoptimised; keep tests and the demo responsive.
+[profile.dev.package.syntect]
+opt-level = 3
+[profile.dev.package.fancy-regex]
+opt-level = 3
+[profile.dev.package.regex-automata]
+opt-level = 3
+[profile.dev.package.regex-syntax]
+opt-level = 3
