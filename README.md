@@ -1,8 +1,6 @@
 # hoodrich
 
-Render markdown and source code as styled [ratatui](https://ratatui.rs) `Text`.
-
-Inspired by [Textualize's Rich](https://github.com/Textualize/rich).
+[Textualize's Rich](https://github.com/Textualize/rich) for [ratatui](https://ratatui.rs)
 
 - **ANSI-only markdown styling.** Headings, emphasis, lists, quotes, tables and links use the
   16 standard terminal colours and modifiers, so your terminal theme drives the look.
