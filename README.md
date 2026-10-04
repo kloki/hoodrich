@@ -2,6 +2,8 @@
 
 Render markdown and source code as styled [ratatui](https://ratatui.rs) `Text`.
 
+Inspired by [Textualize's Rich](https://github.com/Textualize/rich).
+
 - **ANSI-only markdown styling.** Headings, emphasis, lists, quotes, tables and links use the
   16 standard terminal colours and modifiers, so your terminal theme drives the look.
 - **Two modes.** `Concealed` hides markdown syntax (`###`, `**`, code fences, link urls) and
