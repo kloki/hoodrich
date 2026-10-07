@@ -11,6 +11,8 @@
   background. Whole source files render the same way.
 - **Diffs.** Give it the old and new text. Unchanged lines come back styled, added and removed
   lines come back plain so you can colour them yourself.
+- **Clickable links.** `render_with_links` also says where each link's text landed (line and
+  display columns) and its url, even when concealed mode hides it.
 - **One line out per line in.** Every source line maps to exactly one output line in both modes,
   which keeps scrolling, cursors and diffs simple.
 - **Never fails.** There is no `Result` in the API. Malformed markdown renders best effort.
@@ -31,6 +33,12 @@ let renderer = Renderer::new(Mode::Concealed).with_width(area.width);
 // Markdown
 let text = renderer.render("# Title\n\nSome **bold** text and `code`.");
 frame.render_widget(Paragraph::new(text), area);
+
+// Markdown plus where its links are, to open the one under a mouse click
+let rendered = renderer.render_with_links(source);
+for link in &rendered.links {
+    // link.line, link.columns (display columns) and link.url
+}
 
 // A source file
 let text = renderer.render_code(source, "rs");

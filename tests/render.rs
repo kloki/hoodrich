@@ -20,6 +20,15 @@ fn one_line_per_source_line_in_both_modes() {
 }
 
 #[test]
+fn rendering_with_links_draws_the_same_text() {
+    for mode in [Mode::Concealed, Mode::Raw] {
+        let renderer = Renderer::new(mode);
+        let rendered = renderer.render_with_links(SAMPLE);
+        assert_eq!(rendered.text, renderer.render(SAMPLE), "{mode:?}");
+    }
+}
+
+#[test]
 fn raw_mode_round_trips_the_source() {
     let text = Renderer::new(Mode::Raw).render(SAMPLE);
     let rendered: Vec<String> = text.lines.iter().map(ToString::to_string).collect();

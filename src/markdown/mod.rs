@@ -11,7 +11,7 @@ mod lines;
 
 use std::{borrow::Cow, ops::Range};
 
-use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
 use ratatui::{style::Style, text::Line};
 
 use crate::{Mode, code::Highlighter, source, theme::Theme};
@@ -34,13 +34,23 @@ struct Cell {
     style: Style,
 }
 
+/// A link as rendered: where its text ended up and where it points.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Link {
+    /// Output line the text is on, which is also its source line.
+    pub line: usize,
+    /// Display columns of the link's visible text on that line.
+    pub columns: Range<usize>,
+    pub url: String,
+}
+
 pub fn render<'a>(
     source: &'a str,
     mode: Mode,
     theme: &Theme,
     width: Option<u16>,
     highlighter: &Highlighter,
-) -> Vec<Line<'a>> {
+) -> (Vec<Line<'a>>, Vec<Link>) {
     let mut painter = Painter::new(source, theme, highlighter);
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
@@ -73,6 +83,9 @@ struct Painter<'a, 't> {
     code: Option<CodeBlock>,
     /// The `•` of the current list item and the space after it, hidden again for task items.
     bullet: Option<Range<usize>>,
+    /// Source range and url of every link, in source order. Kept beside the cells because
+    /// `paint` overwrites whole cells.
+    links: Vec<(Range<usize>, String)>,
 }
 
 impl<'a, 't> Painter<'a, 't> {
@@ -96,6 +109,7 @@ impl<'a, 't> Painter<'a, 't> {
             quote_depth: 0,
             code: None,
             bullet: None,
+            links: Vec::new(),
         }
     }
 
@@ -186,6 +200,17 @@ impl<'a, 't> Painter<'a, 't> {
                 });
             }
             Tag::FootnoteDefinition(_) => self.footnote_label(range),
+            Tag::Link {
+                link_type,
+                dest_url,
+                ..
+            } => {
+                let url = match link_type {
+                    LinkType::Email => format!("mailto:{dest_url}"),
+                    _ => dest_url.into_string(),
+                };
+                self.links.push((range, url));
+            }
             _ => {}
         }
     }
@@ -406,6 +431,14 @@ impl<'a, 't> Painter<'a, 't> {
         self.code_blocks.push(range);
     }
 
+    /// Index into `links` of the link covering source byte `pos`.
+    fn link_at(&self, pos: usize) -> Option<usize> {
+        let after = self.links.partition_point(|(range, _)| range.start <= pos);
+        after
+            .checked_sub(1)
+            .filter(|&i| self.links[i].0.contains(&pos))
+    }
+
     fn line_of(&self, pos: usize) -> usize {
         self.line_ranges.partition_point(|r| r.end < pos)
     }
@@ -418,7 +451,15 @@ mod tests {
     use super::*;
 
     fn lines(source: &str, mode: Mode) -> Vec<Line<'_>> {
+        render(source, mode, &Theme::default(), None, Highlighter::shared()).0
+    }
+
+    fn links(source: &str, mode: Mode) -> Vec<(usize, Range<usize>, String)> {
         render(source, mode, &Theme::default(), None, Highlighter::shared())
+            .1
+            .into_iter()
+            .map(|link| (link.line, link.columns, link.url))
+            .collect()
     }
 
     fn concealed(source: &str) -> Vec<String> {
@@ -498,6 +539,79 @@ mod tests {
                 .contains(Modifier::UNDERLINED)
         );
         assert_eq!(concealed("<https://x.y>"), ["https://x.y"]);
+    }
+
+    fn link(line: usize, columns: Range<usize>, url: &str) -> (usize, Range<usize>, String) {
+        (line, columns, url.to_owned())
+    }
+
+    #[test]
+    fn links_report_where_their_text_landed() {
+        assert_eq!(
+            links("see [docs](https://x.y) now", Mode::Concealed),
+            [link(0, 4..8, "https://x.y")]
+        );
+        assert_eq!(
+            links("see [docs](https://x.y) now", Mode::Raw),
+            [link(0, 4..23, "https://x.y")]
+        );
+        assert_eq!(
+            links("[a](u) and [b](v)", Mode::Concealed),
+            [link(0, 0..1, "u"), link(0, 6..7, "v")]
+        );
+    }
+
+    #[test]
+    fn styles_inside_a_link_do_not_split_it() {
+        assert_eq!(
+            links("**[bold](u)**", Mode::Concealed),
+            [link(0, 0..4, "u")]
+        );
+        assert_eq!(
+            links("[**bold** text](u)", Mode::Concealed),
+            [link(0, 0..9, "u")]
+        );
+    }
+
+    #[test]
+    fn link_columns_count_what_is_drawn() {
+        assert_eq!(links("- [a](u)", Mode::Concealed), [link(0, 2..3, "u")]);
+        assert_eq!(links("[日本](u)", Mode::Concealed), [link(0, 0..4, "u")]);
+        assert_eq!(
+            links("x [a&amp;b](u)", Mode::Concealed),
+            [link(0, 2..5, "u")]
+        );
+    }
+
+    #[test]
+    fn a_link_over_a_soft_break_is_reported_per_line() {
+        let source = "- see [two\n  lines](u) here";
+        assert_eq!(concealed(source), ["• see two", "  lines here"]);
+        assert_eq!(
+            links(source, Mode::Concealed),
+            [link(0, 6..9, "u"), link(1, 2..7, "u")]
+        );
+    }
+
+    #[test]
+    fn reference_auto_and_email_links_resolve() {
+        assert_eq!(
+            links("[a][r]\n\n[r]: https://r", Mode::Concealed),
+            [link(0, 0..1, "https://r")]
+        );
+        assert_eq!(
+            links("<https://x.y>", Mode::Concealed),
+            [link(0, 0..11, "https://x.y")]
+        );
+        assert_eq!(
+            links("<a@b.c>", Mode::Concealed),
+            [link(0, 0..5, "mailto:a@b.c")]
+        );
+    }
+
+    #[test]
+    fn images_and_plain_urls_are_not_links() {
+        assert_eq!(links("![alt](i.png) https://x.y", Mode::Concealed), []);
     }
 
     #[test]
